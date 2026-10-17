@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
+import '../services/report_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/top_bar.dart';
+import 'summary_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,9 +13,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  double _todaySales = 0;
-  double _todayExpenses = 0;
-  double _todayProfit = 0;
+  Report? _today;
+  double _thisWeek = 0;
+  double _lastWeek = 0;
   List<Map<String, dynamic>> _lowStock = [];
 
   @override
@@ -22,44 +25,52 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadHomeData() async {
-    final sales = await DBHelper().getSales();
-    final expenses = await DBHelper().getExpenses();
+    final now = DateTime.now();
+    final today0 = DateTime(now.year, now.month, now.day);
+    final tomorrow0 = DateTime(now.year, now.month, now.day + 1);
+    final weekStart = DateTime(now.year, now.month, now.day - 6);
+    final lastWeekStart = DateTime(now.year, now.month, now.day - 13);
+
+    final today = await ReportService.forRange(today0, tomorrow0);
+    final week = await ReportService.forRange(weekStart, tomorrow0);
+    final lastWeek = await ReportService.forRange(lastWeekStart, weekStart);
     final products = await DBHelper().getProducts();
+    final lowStock =
+        products.where((p) => (p['quantity'] as int) <= 3).toList();
 
-    final today = DateTime.now();
-    bool isToday(String dateStr) {
-      final d = DateTime.parse(dateStr);
-      return d.year == today.year && d.month == today.month && d.day == today.day;
-    }
-
-    double todaySalesTotal = 0;
-    for (final sale in sales) {
-      if (isToday(sale['date'])) {
-        todaySalesTotal += (sale['sell_price'] as num) * (sale['quantity'] as num);
-      }
-    }
-
-    double todayExpensesTotal = 0;
-    for (final expense in expenses) {
-      if (isToday(expense['date'])) {
-        todayExpensesTotal += (expense['amount'] as num).toDouble();
-      }
-    }
-
-    final lowStockItems = products.where((p) => (p['quantity'] as int) <= 3).toList();
-
+    if (!mounted) return;
     setState(() {
-      _todaySales = todaySalesTotal;
-      _todayExpenses = todayExpensesTotal;
-      _todayProfit = todaySalesTotal - todayExpensesTotal;
-      _lowStock = lowStockItems;
+      _today = today;
+      _thisWeek = week.netProfit;
+      _lastWeek = lastWeek.netProfit;
+      _lowStock = lowStock;
     });
+  }
+
+  String _trendText() {
+    if (_lastWeek > 0) {
+      final pct = ((_thisWeek - _lastWeek) / _lastWeek * 100).round();
+      final arrow = pct >= 0 ? '↑' : '↓';
+      return '$arrow ${pct.abs()}% vs last week';
+    }
+    return 'Last 7 days: ${formatMoney(_thisWeek)} RWF';
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = _today;
+    final profit = t?.netProfit ?? 0;
+    final isLoss = profit < 0;
+    final cardColor =
+        isLoss ? const Color(0xFFFCEBEB) : const Color(0xFFEAF3DE);
+    final labelColor =
+        isLoss ? const Color(0xFFA32D2D) : const Color(0xFF3B6D11);
+    final bigColor =
+        isLoss ? const Color(0xFF501313) : const Color(0xFF173404);
+    final trendGood = _lastWeek > 0 ? _thisWeek >= _lastWeek : _thisWeek >= 0;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('MenyaBiz')),
+      appBar: const MenyaAppBar(title: 'MenyaBiz'),
       body: RefreshIndicator(
         onRefresh: _loadHomeData,
         child: ListView(
@@ -68,23 +79,90 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF3DE),
+                color: cardColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Today's profit", style: TextStyle(color: Color(0xFF3B6D11))),
+                  Text("Today's profit", style: TextStyle(color: labelColor)),
                   const SizedBox(height: 4),
                   Text(
-                    '${_todayProfit.toStringAsFixed(0)} RWF',
-                    style: const TextStyle(
+                    '${formatMoney(profit)} RWF',
+                    style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF173404),
+                      color: bigColor,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Sales ${_todaySales.toStringAsFixed(0)} · Expenses ${_todayExpenses.toStringAsFixed(0)}',
-                    style: const TextStyle(color:
+                    'Sales ${formatMoney(t?.sales ?? 0)} · Expenses ${formatMoney(t?.expenses ?? 0)}',
+                    style: TextStyle(color: labelColor, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('This week'),
+                  Text(
+                    _trendText(),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: trendGood
+                          ? AppTheme.primaryGreen
+                          : AppTheme.warningRed,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_lowStock.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Stock alert',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    for (final item in _lowStock)
+                      Text('${item['name']}: ${item['quantity']} left',
+                          style: const TextStyle(color: AppTheme.warningRed)),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SummaryScreen()),
+                );
+                _loadHomeData();
+              },
+              icon: const Icon(Icons.bar_chart),
+              label: const Text('View full summary'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
