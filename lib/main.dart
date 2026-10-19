@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'l10n/strings.dart';
+import 'services/settings_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/stock_screen.dart';
@@ -6,7 +8,9 @@ import 'screens/sales_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/my_money_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppSettings.instance.load();
   runApp(const MenyaBizApp());
 }
 
@@ -15,11 +19,18 @@ class MenyaBizApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'MenyaBiz',
-      theme: AppTheme.lightTheme,
-      home: const MainNavigation(),
-      debugShowCheckedModeBanner: false,
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'MenyaBiz',
+          theme: AppTheme.lightTheme,
+          debugShowCheckedModeBanner: false,
+          home: MainNavigation(
+            key: ValueKey(AppSettings.instance.language),
+          ),
+        );
+      },
     );
   }
 }
@@ -42,12 +53,6 @@ class _MainNavigationState extends State<MainNavigation> {
     MyMoneyScreen(),
   ];
 
-  void _onTabTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -55,13 +60,18 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _selectedIndex,
-        onTap: _onTabTapped,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory_2), label: 'Stock'),
-          BottomNavigationBarItem(icon: Icon(Icons.point_of_sale), label: 'Sales'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: 'Chat'),
-          BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'My money'),
+        onTap: (i) => setState(() => _selectedIndex = i),
+        items: [
+          BottomNavigationBarItem(
+              icon: const Icon(Icons.home), label: tr('home')),
+          BottomNavigationBarItem(
+              icon: const Icon(Icons.inventory_2), label: tr('stock')),
+          BottomNavigationBarItem(
+              icon: const Icon(Icons.point_of_sale), label: tr('sales')),
+          BottomNavigationBarItem(
+              icon: const Icon(Icons.chat_bubble), label: tr('chat')),
+          BottomNavigationBarItem(
+              icon: const Icon(Icons.wallet), label: tr('my_money')),
         ],
       ),
     );

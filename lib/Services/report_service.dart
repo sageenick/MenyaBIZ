@@ -10,16 +10,21 @@ class Report {
   final double goodsCost;
   final double expenses;
   final int salesCount;
+  final double vatCollected;
+  final double vatPaid;
 
   const Report({
     required this.sales,
     required this.goodsCost,
     required this.expenses,
     required this.salesCount,
+    required this.vatCollected,
+    required this.vatPaid,
   });
 
   double get grossProfit => sales - goodsCost;
   double get netProfit => grossProfit - expenses;
+  double get vatDue => vatCollected - vatPaid;
 }
 
 class ReportService {
@@ -27,6 +32,7 @@ class ReportService {
   static Future<Report> forRange(DateTime? start, DateTime? end) async {
     final sales = await DBHelper().getSales();
     final expenses = await DBHelper().getExpenses();
+    final receipts = await DBHelper().getReceipts();
 
     bool inRange(String dateStr) {
       final d = DateTime.parse(dateStr);
@@ -55,11 +61,23 @@ class ReportService {
       }
     }
 
+    double vatPaid = 0;
+    for (final r in receipts) {
+      if (inRange(r['date'] as String)) {
+        vatPaid += (r['vat'] as num).toDouble();
+      }
+    }
+
+    // Prices include 18% VAT: VAT = price - price / 1.18
+    final vatCollected = salesTotal - salesTotal / 1.18;
+
     return Report(
       sales: salesTotal,
       goodsCost: costTotal,
       expenses: expenseTotal,
       salesCount: count,
+      vatCollected: vatCollected,
+      vatPaid: vatPaid,
     );
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../database/db_helper.dart';
+import '../l10n/strings.dart';
 import '../services/report_service.dart';
+import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/top_bar.dart';
 
@@ -20,12 +22,20 @@ class _SummaryScreenState extends State<SummaryScreen> {
   double _stockValue = 0;
   double _assetsTotal = 0;
 
-  static const _labels = {
-    'today': 'Today',
-    'week': 'Last 7 days',
-    'month': 'This month',
-    'all': 'All time',
-  };
+  static const _periods = ['today', 'week', 'month', 'all'];
+
+  String _label(String key) {
+    switch (key) {
+      case 'today':
+        return tr('today');
+      case 'week':
+        return tr('week');
+      case 'month':
+        return tr('month');
+      default:
+        return tr('all_time');
+    }
+  }
 
   @override
   void initState() {
@@ -70,8 +80,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
     double stockValue = 0;
     for (final p in products) {
-      stockValue +=
-          (p['quantity'] as num).toDouble() * (p['average_cost'] as num).toDouble();
+      stockValue += (p['quantity'] as num).toDouble() *
+          (p['average_cost'] as num).toDouble();
     }
 
     double assets = 0;
@@ -92,18 +102,18 @@ class _SummaryScreenState extends State<SummaryScreen> {
   Future<void> _copySummary() async {
     final r = _report;
     if (r == null) return;
-    final text = 'MenyaBiz summary (${_labels[_period]})\n'
-        'Sales: ${formatMoney(r.sales)} RWF\n'
-        'Cost of goods: ${formatMoney(r.goodsCost)} RWF\n'
-        'Expenses: ${formatMoney(r.expenses)} RWF\n'
-        'Net profit: ${formatMoney(r.netProfit)} RWF\n'
-        'They owe me: ${formatMoney(_owedToYou)} RWF\n'
-        'I owe: ${formatMoney(_youOwe)} RWF\n'
-        'Stock value: ${formatMoney(_stockValue)} RWF';
+    final text = 'MenyaBiz - ${_label(_period)}\n'
+        '${tr('sales_amount')}: ${formatMoney(r.sales)} RWF\n'
+        '${tr('cost_goods')}: ${formatMoney(r.goodsCost)} RWF\n'
+        '${tr('expenses')}: ${formatMoney(r.expenses)} RWF\n'
+        '${tr('net_profit')}: ${formatMoney(r.netProfit)} RWF\n'
+        '${tr('owed_to_you')}: ${formatMoney(_owedToYou)} RWF\n'
+        '${tr('you_owe')}: ${formatMoney(_youOwe)} RWF\n'
+        '${tr('stock_value')}: ${formatMoney(_stockValue)} RWF';
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Summary copied. Paste it in WhatsApp or SMS.')),
+      SnackBar(content: Text(tr('copied_msg'))),
     );
   }
 
@@ -113,9 +123,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: TextStyle(
-                  fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
+          Flexible(
+            child: Text(label,
+                style: TextStyle(
+                    fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
+          ),
+          const SizedBox(width: 8),
           Text(value,
               style: TextStyle(
                   fontWeight: bold ? FontWeight.bold : FontWeight.normal,
@@ -141,105 +154,118 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final r = _report;
-    final isLoss = r != null && r.netProfit < 0;
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (context, _) {
+        final r = _report;
+        final isLoss = r != null && r.netProfit < 0;
 
-    return Scaffold(
-      appBar: const MenyaAppBar(title: 'Full summary'),
-      body: r == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Wrap(
-                  spacing: 8,
+        return Scaffold(
+          appBar: MenyaAppBar(title: tr('full_summary')),
+          body: r == null
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.all(16),
                   children: [
-                    for (final key in _labels.keys)
-                      ChoiceChip(
-                        label: Text(_labels[key]!),
-                        selected: _period == key,
-                        onSelected: (_) {
-                          setState(() => _period = key);
-                          _load();
-                        },
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final key in _periods)
+                          ChoiceChip(
+                            label: Text(_label(key)),
+                            selected: _period == key,
+                            onSelected: (_) {
+                              setState(() => _period = key);
+                              _load();
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _card(
+                      color: isLoss
+                          ? const Color(0xFFFCEBEB)
+                          : const Color(0xFFEAF3DE),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isLoss ? tr('loss') : tr('net_profit'),
+                            style: TextStyle(
+                              color: isLoss
+                                  ? AppTheme.warningRed
+                                  : AppTheme.primaryGreen,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${formatMoney(r.netProfit)} RWF',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: isLoss
+                                  ? const Color(0xFF501313)
+                                  : const Color(0xFF173404),
+                            ),
+                          ),
+                          Text(
+                              '${r.salesCount} ${tr('sales_word')} · ${_label(_period)}',
+                              style: const TextStyle(fontSize: 12)),
+                        ],
                       ),
+                    ),
+                    _card(
+                      child: Column(
+                        children: [
+                          _row(tr('sales_amount'),
+                              '${formatMoney(r.sales)} RWF'),
+                          _row(tr('cost_goods'),
+                              '- ${formatMoney(r.goodsCost)} RWF'),
+                          _row(tr('gross_profit'),
+                              '${formatMoney(r.grossProfit)} RWF'),
+                          _row(tr('expenses'),
+                              '- ${formatMoney(r.expenses)} RWF'),
+                          const Divider(),
+                          _row(tr('net_profit'),
+                              '${formatMoney(r.netProfit)} RWF',
+                              bold: true,
+                              color: isLoss
+                                  ? AppTheme.warningRed
+                                  : AppTheme.primaryGreen),
+                        ],
+                      ),
+                    ),
+                    _card(
+                      child: Column(
+                        children: [
+                          _row(tr('owed_to_you'),
+                              '${formatMoney(_owedToYou)} RWF',
+                              color: AppTheme.primaryGreen),
+                          _row(tr('you_owe'), '${formatMoney(_youOwe)} RWF',
+                              color: AppTheme.warningRed),
+                        ],
+                      ),
+                    ),
+                    _card(
+                      child: Column(
+                        children: [
+                          _row(tr('stock_value'),
+                              '${formatMoney(_stockValue)} RWF'),
+                          _row(tr('materials_bought'),
+                              '${formatMoney(_assetsTotal)} RWF'),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _copySummary,
+                      icon: const Icon(Icons.copy),
+                      label: Text(tr('copy_summary')),
+                    ),
+                    const SizedBox(height: 24),
                   ],
                 ),
-                const SizedBox(height: 16),
-                _card(
-                  color: isLoss
-                      ? const Color(0xFFFCEBEB)
-                      : const Color(0xFFEAF3DE),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isLoss ? 'Loss' : 'Net profit',
-                        style: TextStyle(
-                          color: isLoss
-                              ? AppTheme.warningRed
-                              : AppTheme.primaryGreen,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${formatMoney(r.netProfit)} RWF',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: isLoss
-                              ? const Color(0xFF501313)
-                              : const Color(0xFF173404),
-                        ),
-                      ),
-                      Text('${r.salesCount} sales · ${_labels[_period]}',
-                          style: const TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ),
-                _card(
-                  child: Column(
-                    children: [
-                      _row('Sales', '${formatMoney(r.sales)} RWF'),
-                      _row('Cost of goods', '- ${formatMoney(r.goodsCost)} RWF'),
-                      _row('Expenses', '- ${formatMoney(r.expenses)} RWF'),
-                      const Divider(),
-                      _row('Net profit', '${formatMoney(r.netProfit)} RWF',
-                          bold: true,
-                          color: isLoss
-                              ? AppTheme.warningRed
-                              : AppTheme.primaryGreen),
-                    ],
-                  ),
-                ),
-                _card(
-                  child: Column(
-                    children: [
-                      _row('They owe you', '${formatMoney(_owedToYou)} RWF',
-                          color: AppTheme.primaryGreen),
-                      _row('You owe', '${formatMoney(_youOwe)} RWF',
-                          color: AppTheme.warningRed),
-                    ],
-                  ),
-                ),
-                _card(
-                  child: Column(
-                    children: [
-                      _row('Stock value (at cost)',
-                          '${formatMoney(_stockValue)} RWF'),
-                      _row('Materials bought',
-                          '${formatMoney(_assetsTotal)} RWF'),
-                    ],
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _copySummary,
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copy summary to share'),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
+        );
+      },
     );
   }
 }

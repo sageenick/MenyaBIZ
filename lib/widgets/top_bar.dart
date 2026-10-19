@@ -1,30 +1,110 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
+import '../services/settings_service.dart';
 
-class MenyaAppBar extends StatelessWidget implements PreferredSizeWidget {
+class MenyaAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String title;
   final PreferredSizeWidget? bottom;
 
-  const MenyaAppBar({super.key, required this.title, this.bottom});
+  /// If set, the search icon is shown and this is called while typing.
+  final ValueChanged<String>? onSearchChanged;
+
+  const MenyaAppBar({
+    super.key,
+    required this.title,
+    this.bottom,
+    this.onSearchChanged,
+  });
 
   @override
   Size get preferredSize =>
       Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
 
+  @override
+  State<MenyaAppBar> createState() => _MenyaAppBarState();
+}
+
+class _MenyaAppBarState extends State<MenyaAppBar> {
+  bool _searching = false;
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _toggleSearch() {
+    setState(() => _searching = !_searching);
+    if (!_searching) {
+      _searchController.clear();
+      widget.onSearchChanged?.call('');
+    }
+  }
+
+  void _showLanguageDialog(BuildContext sheetContext) {
+    showDialog(
+      context: sheetContext,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(tr('language')),
+        children: [
+          _langOption(
+              dialogContext, sheetContext, 'en', tr('language_english')),
+          _langOption(
+              dialogContext, sheetContext, 'rw', tr('language_kinyarwanda')),
+        ],
+      ),
+    );
+  }
+
+  Widget _langOption(BuildContext dialogContext, BuildContext sheetContext,
+      String code, String label) {
+    final selected = AppSettings.instance.language == code;
+    return ListTile(
+      title: Text(label),
+      trailing: selected ? const Icon(Icons.check, color: Colors.green) : null,
+      onTap: () async {
+        await AppSettings.instance.setLanguage(code);
+        if (dialogContext.mounted) Navigator.pop(dialogContext);
+        if (sheetContext.mounted) Navigator.pop(sheetContext);
+      },
+    );
+  }
+
   void _showAccountMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _item(context, Icons.login, 'Sign in'),
-            _item(context, Icons.dark_mode, 'Dark mode'),
-            _item(context, Icons.language, 'Language'),
-            _item(context, Icons.play_circle, 'Try demo'),
-            _item(context, Icons.credit_card, 'Subscription'),
-            _item(context, Icons.help_outline, 'Help'),
-          ],
-        ),
+      isScrollControlled: true,
+      builder: (sheetContext) => ListenableBuilder(
+        listenable: AppSettings.instance,
+        builder: (_, _) {
+          final isRw = AppSettings.instance.language == 'rw';
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.language),
+                    title: Text(tr('language')),
+                    subtitle: Text(isRw
+                        ? tr('language_kinyarwanda')
+                        : tr('language_english')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _showLanguageDialog(sheetContext),
+                  ),
+                  const Divider(),
+                  _item(sheetContext, Icons.login, tr('sign_in')),
+                  _item(sheetContext, Icons.dark_mode, tr('dark_mode')),
+                  _item(sheetContext, Icons.play_circle, tr('try_demo')),
+                  _item(sheetContext, Icons.credit_card, tr('subscription')),
+                  _item(sheetContext, Icons.help_outline, tr('help')),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -36,7 +116,9 @@ class MenyaAppBar extends StatelessWidget implements PreferredSizeWidget {
       onTap: () {
         final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        messenger.showSnackBar(SnackBar(content: Text('$label coming soon')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('$label - ${tr('coming_soon')}')),
+        );
       },
     );
   }
@@ -44,21 +126,32 @@ class MenyaAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      title: Text(title),
-      bottom: bottom,
+      title: _searching
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              cursorColor: Colors.white,
+              style: const TextStyle(color: Colors.white, fontSize: 18),
+              decoration: InputDecoration(
+                hintText: tr('search_hint'),
+                hintStyle: const TextStyle(color: Colors.white70),
+                border: InputBorder.none,
+              ),
+              onChanged: widget.onSearchChanged,
+            )
+          : Text(widget.title),
+      bottom: widget.bottom,
       actions: [
-        IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Search coming soon')),
-            );
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.account_circle),
-          onPressed: () => _showAccountMenu(context),
-        ),
+        if (widget.onSearchChanged != null)
+          IconButton(
+            icon: Icon(_searching ? Icons.close : Icons.search),
+            onPressed: _toggleSearch,
+          ),
+        if (!_searching)
+          IconButton(
+            icon: const Icon(Icons.account_circle),
+            onPressed: () => _showAccountMenu(context),
+          ),
       ],
     );
   }

@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
+import '../l10n/strings.dart';
+import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/scroll_top_wrapper.dart';
-
-String _money(num v) {
-  final s = v.round().toString();
-  return s.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
-}
 
 class MyMoneyScreen extends StatefulWidget {
   const MyMoneyScreen({super.key});
@@ -23,8 +20,9 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
   List<Map<String, dynamic>> _expenses = [];
   List<Map<String, dynamic>> _debts = [];
   List<Map<String, dynamic>> _materials = [];
+  String _query = '';
 
-  // Which debt list is showing: 'owed_to_you' or 'you_owe'
+  // 'owed_to_you' (Receivables) or 'you_owe' (Payables)
   String _debtView = 'owed_to_you';
 
   @override
@@ -51,7 +49,16 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     });
   }
 
-  // ---------- Expenses and materials ----------
+  List<Map<String, dynamic>> _filter(
+      List<Map<String, dynamic>> items, String key) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items
+        .where((e) => (e[key] as String).toLowerCase().contains(q))
+        .toList();
+  }
+
+  // ---------- Expenses and assets ----------
 
   void _showSimpleAddDialog({
     required String title,
@@ -75,7 +82,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
               ),
               TextField(
                 controller: amountController,
-                decoration: const InputDecoration(labelText: 'Amount'),
+                decoration: InputDecoration(labelText: tr('amount')),
                 keyboardType: TextInputType.number,
               ),
             ],
@@ -84,7 +91,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(tr('cancel')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -102,7 +109,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
               Navigator.pop(dialogContext);
               _loadData();
             },
-            child: const Text('Save'),
+            child: Text(tr('save')),
           ),
         ],
       ),
@@ -113,15 +120,15 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('Delete "${e['type']}"?'),
+        title: Text(trn('delete_item_title', e['type'])),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(tr('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
+            child: Text(tr('delete')),
           ),
         ],
       ),
@@ -131,17 +138,18 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     _loadData();
   }
 
-  Widget _expenseList(List<Map<String, dynamic>> items, String emptyText) {
+  Widget _expenseList(List<Map<String, dynamic>> all, String emptyText) {
+    final items = _filter(all, 'type');
     if (items.isEmpty) return Center(child: Text(emptyText));
     return Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'Long-press an item to delete it',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              tr('longpress_delete'),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ),
         ),
@@ -156,7 +164,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
                 return ListTile(
                   onLongPress: () => _confirmDeleteExpense(e),
                   title: Text(e['type'] as String),
-                  trailing: Text('${_money(e['amount'] as num)} RWF'),
+                  trailing: Text('${formatMoney(e['amount'] as num)} RWF'),
                   subtitle: Text(e['date'].toString().substring(0, 10)),
                 );
               },
@@ -167,7 +175,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     );
   }
 
-  // ---------- Debts ----------
+  // ---------- Debts (Receivables / Payables) ----------
 
   void _showAddDebtDialog(String initialDirection) {
     final personController = TextEditingController();
@@ -178,30 +186,29 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add debt'),
+          title: Text(tr('add_debt')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: direction,
-                  items: const [
+                  items: [
                     DropdownMenuItem(
-                        value: 'owed_to_you', child: Text('They owe you')),
+                        value: 'owed_to_you', child: Text(tr('owed_to_you'))),
                     DropdownMenuItem(
-                        value: 'you_owe', child: Text('You owe')),
+                        value: 'you_owe', child: Text(tr('you_owe'))),
                   ],
                   onChanged: (value) =>
                       setDialogState(() => direction = value!),
                 ),
                 TextField(
                   controller: personController,
-                  decoration:
-                      const InputDecoration(labelText: 'Person/supplier name'),
+                  decoration: InputDecoration(labelText: tr('person_name')),
                 ),
                 TextField(
                   controller: amountController,
-                  decoration: const InputDecoration(labelText: 'Amount'),
+                  decoration: InputDecoration(labelText: tr('amount')),
                   keyboardType: TextInputType.number,
                 ),
               ],
@@ -210,7 +217,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(tr('cancel')),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -233,7 +240,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
                 }
                 _loadData();
               },
-              child: const Text('Save'),
+              child: Text(tr('save')),
             ),
           ],
         ),
@@ -251,7 +258,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
           children: [
             ListTile(
               leading: Icon(paid ? Icons.undo : Icons.check_circle),
-              title: Text(paid ? 'Mark as not paid' : 'Mark as paid'),
+              title: Text(paid ? tr('mark_unpaid') : tr('mark_paid')),
               onTap: () async {
                 await DBHelper().setDebtPaid(d['id'] as int, !paid);
                 if (!sheetContext.mounted) return;
@@ -261,7 +268,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
             ),
             ListTile(
               leading: const Icon(Icons.delete, color: AppTheme.warningRed),
-              title: const Text('Delete'),
+              title: Text(tr('delete')),
               onTap: () async {
                 await DBHelper().deleteDebt(d['id'] as int);
                 if (!sheetContext.mounted) return;
@@ -275,7 +282,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     );
   }
 
-  double _unpaidTotal(String direction) {
+  double _outstandingTotal(String direction) {
     double total = 0;
     for (final d in _debts) {
       if (d['direction'] == direction && (d['paid'] ?? 0) == 0) {
@@ -285,8 +292,9 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     return total;
   }
 
-  Widget _debtCard({
+  Widget _debtTile({
     required String label,
+    required String sub,
     required double total,
     required Color color,
     required bool selected,
@@ -296,13 +304,13 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            color: selected ? color.withValues(alpha: 0.08) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: selected ? color : Colors.grey.shade300,
-              width: selected ? 2 : 1,
+              width: selected ? 1.5 : 1,
             ),
           ),
           child: Column(
@@ -310,14 +318,20 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
             children: [
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    fontSize: 13, color: color, fontWeight: FontWeight.bold),
+                    fontSize: 12, color: color, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 4),
+              Text(sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              const SizedBox(height: 2),
               Text(
-                '${_money(total)} RWF',
+                '${formatMoney(total)} RWF',
                 style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -326,72 +340,120 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     );
   }
 
+  Widget _ledgerHeader() {
+    const style = TextStyle(fontSize: 12, fontWeight: FontWeight.bold);
+    return Container(
+      color: Colors.grey.shade200,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(flex: 5, child: Text(tr('col_name'), style: style)),
+          Expanded(flex: 3, child: Text(tr('col_date'), style: style)),
+          Expanded(
+            flex: 4,
+            child: Text(tr('col_amount'),
+                textAlign: TextAlign.right, style: style),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _debtTab() {
     int paidFlag(Map<String, dynamic> m) => (m['paid'] ?? 0) as int;
 
-    final showing = _debts.where((d) => d['direction'] == _debtView).toList()
-      ..sort((a, b) => paidFlag(a).compareTo(paidFlag(b)));
-    final isOwedToYou = _debtView == 'owed_to_you';
-    final color = isOwedToYou ? AppTheme.primaryGreen : AppTheme.warningRed;
+    final showing = _filter(
+      _debts.where((d) => d['direction'] == _debtView).toList(),
+      'person',
+    )..sort((a, b) => paidFlag(a).compareTo(paidFlag(b)));
+    final isReceivable = _debtView == 'owed_to_you';
+    final color = isReceivable ? AppTheme.primaryGreen : AppTheme.warningRed;
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
           child: Row(
             children: [
-              _debtCard(
-                label: 'They owe you',
-                total: _unpaidTotal('owed_to_you'),
+              _debtTile(
+                label: tr('owed_to_you'),
+                sub: tr('debtors'),
+                total: _outstandingTotal('owed_to_you'),
                 color: AppTheme.primaryGreen,
-                selected: isOwedToYou,
+                selected: isReceivable,
                 onTap: () => setState(() => _debtView = 'owed_to_you'),
               ),
-              const SizedBox(width: 12),
-              _debtCard(
-                label: 'You owe',
-                total: _unpaidTotal('you_owe'),
+              const SizedBox(width: 10),
+              _debtTile(
+                label: tr('you_owe'),
+                sub: tr('creditors'),
+                total: _outstandingTotal('you_owe'),
                 color: AppTheme.warningRed,
-                selected: !isOwedToYou,
+                selected: !isReceivable,
                 onTap: () => setState(() => _debtView = 'you_owe'),
               ),
             ],
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Tap a debt to mark it paid or delete it',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ),
-        ),
+        _ledgerHeader(),
         Expanded(
           child: showing.isEmpty
-              ? const Center(child: Text('No debts here yet.'))
+              ? Center(child: Text(tr('no_debts')))
               : ScrollTopWrapper(
-                  builder: (controller) => ListView.builder(
+                  builder: (controller) => ListView.separated(
                     controller: controller,
                     padding: const EdgeInsets.only(bottom: 88),
                     itemCount: showing.length,
+                    separatorBuilder: (_, _) =>
+                        Divider(height: 1, color: Colors.grey.shade300),
                     itemBuilder: (context, index) {
                       final d = showing[index];
                       final paid = (d['paid'] ?? 0) == 1;
-                      return ListTile(
+                      return InkWell(
                         onTap: () => _showDebtActions(d),
-                        title: Text(d['person'] as String),
-                        subtitle: Text(
-                          '${d['date'].toString().substring(0, 10)}${paid ? ' · Paid' : ''}',
-                        ),
-                        trailing: Text(
-                          '${_money(d['amount'] as num)} RWF',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: paid ? Colors.grey : color,
-                            decoration:
-                                paid ? TextDecoration.lineThrough : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 5,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(d['person'] as String,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold)),
+                                    if (paid)
+                                      Text(tr('paid'),
+                                          style: const TextStyle(
+                                              fontSize: 11,
+                                              color: AppTheme.primaryGreen)),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  d['date'].toString().substring(0, 10),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 4,
+                                child: Text(
+                                  formatMoney(d['amount'] as num),
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: paid ? Colors.grey : color,
+                                    decoration: paid
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       );
@@ -399,6 +461,17 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
                   ),
                 ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              tr('tap_debt_hint'),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ),
+        ),
+        const SizedBox(height: 70),
       ],
     );
   }
@@ -409,7 +482,8 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: MenyaAppBar(
-        title: 'My money',
+        title: tr('my_money'),
+        onSearchChanged: (v) => setState(() => _query = v),
         bottom: TabBar(
           controller: _tabController,
           labelColor: Colors.white,
@@ -417,21 +491,21 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
           indicatorColor: Colors.white,
           indicatorWeight: 3,
           labelStyle:
-              const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-          unselectedLabelStyle: const TextStyle(fontSize: 15),
-          tabs: const [
-            Tab(text: 'Expenses'),
-            Tab(text: 'Debts'),
-            Tab(text: 'Materials'),
+              const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          unselectedLabelStyle: const TextStyle(fontSize: 14),
+          tabs: [
+            Tab(text: tr('expenses_tab')),
+            Tab(text: tr('debts_tab')),
+            Tab(text: tr('materials_tab')),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _expenseList(_expenses, 'No expenses yet.'),
+          _expenseList(_expenses, tr('no_expenses')),
           _debtTab(),
-          _expenseList(_materials, 'No materials/assets yet.'),
+          _expenseList(_materials, tr('no_materials')),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -439,16 +513,16 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
           final i = _tabController.index;
           if (i == 0) {
             _showSimpleAddDialog(
-              title: 'Add expense',
-              nameLabel: 'What (transport, rent...)',
+              title: tr('add_expense'),
+              nameLabel: tr('expense_hint'),
               category: 'expense',
             );
           } else if (i == 1) {
             _showAddDebtDialog(_debtView);
           } else {
             _showSimpleAddDialog(
-              title: 'Add material/asset',
-              nameLabel: 'What (fridge, shelf...)',
+              title: tr('add_material'),
+              nameLabel: tr('material_hint'),
               category: 'asset',
             );
           }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
+import '../l10n/strings.dart';
 import '../services/report_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/top_bar.dart';
@@ -51,9 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_lastWeek > 0) {
       final pct = ((_thisWeek - _lastWeek) / _lastWeek * 100).round();
       final arrow = pct >= 0 ? '↑' : '↓';
-      return '$arrow ${pct.abs()}% vs last week';
+      return '$arrow ${pct.abs()}% ${tr('vs_last_week')}';
     }
-    return 'Last 7 days: ${formatMoney(_thisWeek)} RWF';
+    return '${tr('last7_days')}: ${formatMoney(_thisWeek)} RWF';
   }
 
   @override
@@ -85,7 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Today's profit", style: TextStyle(color: labelColor)),
+                  Text(tr('todays_profit'),
+                      style: TextStyle(color: labelColor)),
                   const SizedBox(height: 4),
                   Text(
                     '${formatMoney(profit)} RWF',
@@ -97,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Sales ${formatMoney(t?.sales ?? 0)} · Expenses ${formatMoney(t?.expenses ?? 0)}',
+                    '${tr('sales_amount')} ${formatMoney(t?.sales ?? 0)} · ${tr('expenses')} ${formatMoney(t?.expenses ?? 0)}',
                     style: TextStyle(color: labelColor, fontSize: 12),
                   ),
                 ],
@@ -114,14 +116,17 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('This week'),
-                  Text(
-                    _trendText(),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: trendGood
-                          ? AppTheme.primaryGreen
-                          : AppTheme.warningRed,
+                  Text(tr('this_week')),
+                  Flexible(
+                    child: Text(
+                      _trendText(),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: trendGood
+                            ? AppTheme.primaryGreen
+                            : AppTheme.warningRed,
+                      ),
                     ),
                   ),
                 ],
@@ -139,11 +144,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Stock alert',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(tr('stock_alert'),
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     for (final item in _lowStock)
-                      Text('${item['name']}: ${item['quantity']} left',
+                      Text(
+                          '${item['name']}: ${item['quantity']} ${tr('left')}',
                           style: const TextStyle(color: AppTheme.warningRed)),
                   ],
                 ),
@@ -158,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _loadHomeData();
               },
               icon: const Icon(Icons.bar_chart),
-              label: const Text('View full summary'),
+              label: Text(tr('view_summary')),
             ),
           ],
         ),

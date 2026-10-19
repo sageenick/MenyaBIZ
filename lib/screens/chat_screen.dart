@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/strings.dart';
 import '../widgets/top_bar.dart';
 
 class ChatScreen extends StatelessWidget {
@@ -6,9 +7,9 @@ class ChatScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      appBar: MenyaAppBar(title: 'Chat'),
-      body: Center(child: Text('Chat tab')),
+    return Scaffold(
+      appBar: MenyaAppBar(title: tr('chat')),
+      body: Center(child: Text(tr('chat_soon'))),
     );
   }
 }

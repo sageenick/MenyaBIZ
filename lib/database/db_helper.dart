@@ -20,7 +20,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _createTables,
       onUpgrade: _upgradeDB,
     );
@@ -35,6 +35,29 @@ class DBHelper {
       await db.execute(
           'ALTER TABLE debts ADD COLUMN paid INTEGER NOT NULL DEFAULT 0');
     }
+    if (oldVersion < 4) {
+      await db.execute('ALTER TABLE products ADD COLUMN barcode TEXT');
+      await _createSettingsAndReceipts(db);
+    }
+  }
+
+  Future<void> _createSettingsAndReceipts(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS settings (
+        setting_key TEXT PRIMARY KEY,
+        setting_value TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier TEXT NOT NULL,
+        total REAL NOT NULL,
+        vat REAL NOT NULL DEFAULT 0,
+        raw TEXT,
+        date TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _createTables(Database db, int version) async {
@@ -44,7 +67,8 @@ class DBHelper {
         name TEXT NOT NULL,
         average_cost REAL NOT NULL DEFAULT 0,
         sell_price REAL NOT NULL DEFAULT 0,
-        quantity INTEGER NOT NULL DEFAULT 0
+        quantity INTEGER NOT NULL DEFAULT 0,
+        barcode TEXT
       )
     ''');
 
@@ -81,6 +105,26 @@ class DBHelper {
         date TEXT NOT NULL
       )
     ''');
+
+    await _createSettingsAndReceipts(db);
+  }
+
+  // ----- SETTINGS -----
+  Future<String?> getSetting(String key) async {
+    final db = await database;
+    final rows = await db
+        .query('settings', where: 'setting_key = ?', whereArgs: [key]);
+    if (rows.isEmpty) return null;
+    return rows.first['setting_value'] as String;
+  }
+
+  Future<void> setSetting(String key, String value) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {'setting_key': key, 'setting_value': value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   // ----- PRODUCTS -----
@@ -98,6 +142,20 @@ class DBHelper {
     final db = await database;
     return await db
         .update('products', product, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<Map<String, dynamic>?> findProductByBarcode(String code) async {
+    final db = await database;
+    final rows = await db
+        .query('products', where: 'barcode = ?', whereArgs: [code], limit: 1);
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<void> setProductBarcode(int id, String code) async {
+    final db = await database;
+    await db.update('products', {'barcode': code},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   // Restock: adds quantity and recalculates the average cost
@@ -127,7 +185,6 @@ class DBHelper {
   }
 
   // ----- SALES -----
-  // Saves the sale AND reduces stock in one safe step
   Future<void> recordSale({
     required int productId,
     required int quantity,
@@ -152,7 +209,6 @@ class DBHelper {
     });
   }
 
-  // Deletes a sale AND returns the items to stock
   Future<void> deleteSale(int id) async {
     final db = await database;
     await db.transaction((txn) async {
@@ -209,5 +265,21 @@ class DBHelper {
   Future<List<Map<String, dynamic>>> getDebts() async {
     final db = await database;
     return await db.query('debts', orderBy: 'date DESC');
+  }
+
+  // ----- RECEIPTS (supplier EBM receipts, for VAT paid) -----
+  Future<int> insertReceipt(Map<String, dynamic> receipt) async {
+    final db = await database;
+    return await db.insert('receipts', receipt);
+  }
+
+  Future<int> deleteReceipt(int id) async {
+    final db = await database;
+    return await db.delete('receipts', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Map<String, dynamic>>> getReceipts() async {
+    final db = await database;
+    return await db.query('receipts', orderBy: 'date DESC');
   }
 }

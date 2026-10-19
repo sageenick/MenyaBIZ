@@ -3,8 +3,13 @@ import '../theme/app_theme.dart';
 
 class ScrollTopWrapper extends StatefulWidget {
   final Widget Function(ScrollController controller) builder;
+  final double bottom;
 
-  const ScrollTopWrapper({super.key, required this.builder});
+  const ScrollTopWrapper({
+    super.key,
+    required this.builder,
+    this.bottom = 84,
+  });
 
   @override
   State<ScrollTopWrapper> createState() => _ScrollTopWrapperState();
@@ -42,7 +47,7 @@ class _ScrollTopWrapperState extends State<ScrollTopWrapper> {
         widget.builder(_controller),
         Positioned(
           right: 24,
-          bottom: 84,
+          bottom: widget.bottom,
           child: AnimatedOpacity(
             opacity: _show ? 1 : 0,
             duration: const Duration(milliseconds: 200),
