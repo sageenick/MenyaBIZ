@@ -11,6 +11,8 @@ import '../widgets/top_bar.dart';
 import '../widgets/scroll_top_wrapper.dart';
 import 'pro_screens.dart';
 
+const double _radius = 16;
+
 double _num(Object? v) => (v as num?)?.toDouble() ?? 0;
 
 bool _isSettled(Map<String, dynamic> d) =>
@@ -50,6 +52,9 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadData();
   }
 
@@ -343,10 +348,10 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
       child: GestureDetector(
         onTap: _showBalanceActions,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(_radius),
             border: Border.all(color: Colors.grey.shade300),
           ),
           child: Column(
@@ -366,7 +371,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
               Text(
                 formatMoney(value),
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: value < 0 ? AppTheme.warningRed : null,
                 ),
@@ -374,6 +379,71 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _pills() {
+    final labels = [
+      tr('expenses_tab'),
+      tr('debts_tab'),
+      tr('materials_tab'),
+    ];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < 3; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _tabController.animateTo(i),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _tabController.index == i
+                        ? AppTheme.accentBlue
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        labels[i],
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: _tabController.index == i
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: _tabController.index == i
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                      if (i == 2 && !isPro) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.lock,
+                          size: 14,
+                          color: _tabController.index == i
+                              ? Colors.white
+                              : Colors.grey,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -402,7 +472,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(_radius),
         border: Border.all(color: Colors.grey.shade300),
       ),
       child: Column(
@@ -504,24 +574,6 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     final items = _filter(_expenses, 'type');
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-          child: Row(
-            children: [
-              _balanceTile(tr('cash'), Icons.payments, _bal.cash),
-              const SizedBox(width: 8),
-              _balanceTile(tr('momo'), Icons.phone_android, _bal.momo),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(tr('balance_hint'),
-                style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          ),
-        ),
         _breakdownCard(),
         Expanded(
           child: items.isEmpty
@@ -806,10 +858,10 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(_radius),
             border: Border.all(
               color: selected ? color : Colors.grey.shade300,
               width: selected ? 1.5 : 1,
@@ -842,7 +894,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
       child: Text(text, style: TextStyle(fontSize: 11, color: fg)),
     );
   }
@@ -875,7 +927,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(_radius),
         border: Border.all(color: Colors.grey.shade300),
       ),
       child: Column(
@@ -935,7 +987,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
           const SizedBox(height: 6),
           Row(
             children: [
-               ?statusTag,
+              if (statusTag != null) statusTag,
               const Spacer(),
               if (phone.isNotEmpty)
                 IconButton(
@@ -986,7 +1038,7 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
           child: Row(
             children: [
               _debtTile(
@@ -1044,39 +1096,31 @@ class _MyMoneyScreenState extends State<MyMoneyScreen>
           appBar: MenyaAppBar(
             title: tr('my_money'),
             onSearchChanged: (v) => setState(() => _query = v),
-            bottom: TabBar(
-              controller: _tabController,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white70,
-              indicatorColor: Colors.white,
-              indicatorWeight: 3,
-              labelStyle:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              unselectedLabelStyle: const TextStyle(fontSize: 14),
-              tabs: [
-                Tab(text: tr('expenses_tab')),
-                Tab(text: tr('debts_tab')),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(tr('materials_tab')),
-                      if (!isPro) ...[
-                        const SizedBox(width: 4),
-                        const Icon(Icons.lock, size: 14),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
-          body: TabBarView(
-            controller: _tabController,
+          body: Column(
             children: [
-              _expensesTab(),
-              _debtTab(),
-              _assetsTab(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: Row(
+                  children: [
+                    _balanceTile(tr('cash'), Icons.payments, _bal.cash),
+                    const SizedBox(width: 8),
+                    _balanceTile(
+                        tr('momo'), Icons.phone_android, _bal.momo),
+                  ],
+                ),
+              ),
+              _pills(),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _expensesTab(),
+                    _debtTab(),
+                    _assetsTab(),
+                  ],
+                ),
+              ),
             ],
           ),
           floatingActionButton: FloatingActionButton(

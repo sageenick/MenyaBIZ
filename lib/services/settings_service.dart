@@ -10,6 +10,9 @@ class AppSettings extends ChangeNotifier {
   bool proPreview = false;
   double cashBalance = 0;
   double momoBalance = 0;
+  String shopName = '';
+  String shopPhone = '';
+  String shopAddress = '';
 
   Future<void> load() async {
     final db = DBHelper();
@@ -20,6 +23,9 @@ class AppSettings extends ChangeNotifier {
         double.tryParse(await db.getSetting('cash_balance') ?? '') ?? 0;
     momoBalance =
         double.tryParse(await db.getSetting('momo_balance') ?? '') ?? 0;
+    shopName = await db.getSetting('shop_name') ?? '';
+    shopPhone = await db.getSetting('shop_phone') ?? '';
+    shopAddress = await db.getSetting('shop_address') ?? '';
   }
 
   Future<void> setLanguage(String value) async {
@@ -46,5 +52,20 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
     await DBHelper().setSetting('cash_balance', cash.toString());
     await DBHelper().setSetting('momo_balance', momo.toString());
+  }
+
+  Future<void> setShop({
+    required String name,
+    required String phone,
+    String address = '',
+  }) async {
+    shopName = name;
+    shopPhone = phone;
+    shopAddress = address;
+    notifyListeners();
+    final db = DBHelper();
+    await db.setSetting('shop_name', name);
+    await db.setSetting('shop_phone', phone);
+    await db.setSetting('shop_address', address);
   }
 }

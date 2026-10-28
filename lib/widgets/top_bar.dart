@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import '../l10n/strings.dart';
+import '../screens/my_shop_screen.dart';
 import '../screens/pro_screens.dart';
 import '../services/settings_service.dart';
+import '../theme/app_theme.dart';
+
+String _initial() {
+  final n = AppSettings.instance.shopName.trim();
+  return n.isEmpty ? 'M' : n[0].toUpperCase();
+}
 
 class MenyaAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String title;
@@ -41,22 +48,22 @@ class _MenyaAppBarState extends State<MenyaAppBar> {
     }
   }
 
-  void _showLanguageDialog(BuildContext sheetContext) {
+  void _showLanguageDialog(BuildContext accountContext) {
     showDialog(
-      context: sheetContext,
+      context: accountContext,
       builder: (dialogContext) => SimpleDialog(
         title: Text(tr('language')),
         children: [
           _langOption(
-              dialogContext, sheetContext, 'en', tr('language_english')),
+              dialogContext, accountContext, 'en', tr('language_english')),
           _langOption(
-              dialogContext, sheetContext, 'rw', tr('language_kinyarwanda')),
+              dialogContext, accountContext, 'rw', tr('language_kinyarwanda')),
         ],
       ),
     );
   }
 
-  Widget _langOption(BuildContext dialogContext, BuildContext sheetContext,
+  Widget _langOption(BuildContext dialogContext, BuildContext accountContext,
       String code, String label) {
     final selected = AppSettings.instance.language == code;
     return ListTile(
@@ -65,80 +72,167 @@ class _MenyaAppBarState extends State<MenyaAppBar> {
       onTap: () async {
         await AppSettings.instance.setLanguage(code);
         if (dialogContext.mounted) Navigator.pop(dialogContext);
-        if (sheetContext.mounted) Navigator.pop(sheetContext);
+        if (accountContext.mounted) Navigator.pop(accountContext);
       },
+    );
+  }
+
+  Widget _row(
+    IconData icon,
+    String label, {
+    String? sub,
+    Widget? trailing,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 22),
+      leading: Icon(icon, color: Colors.grey.shade700),
+      title: Text(label),
+      subtitle: sub == null ? null : Text(sub),
+      trailing: trailing,
+      onTap: onTap,
+    );
+  }
+
+  Widget _accountCardBody(
+    BuildContext dc,
+    NavigatorState nav,
+    ScaffoldMessengerState messenger,
+  ) {
+    final s = AppSettings.instance;
+    final isRw = s.language == 'rw';
+    final hasName = s.shopName.trim().isNotEmpty;
+
+    void soon(String label) {
+      Navigator.pop(dc);
+      messenger.showSnackBar(
+        SnackBar(content: Text('$label - ${tr('coming_soon')}')),
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 22),
+          CircleAvatar(
+            radius: 30,
+            backgroundColor: AppTheme.primaryGreen,
+            child: Text(
+              _initial(),
+              style: const TextStyle(
+                  fontSize: 26,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            hasName ? s.shopName : tr('tap_to_add_name'),
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: hasName ? null : Colors.grey,
+            ),
+          ),
+          if (s.shopPhone.trim().isNotEmpty)
+            Text(s.shopPhone,
+                style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            decoration: BoxDecoration(
+              color: s.proPreview
+                  ? const Color(0xFFEAF3DE)
+                  : const Color(0xFFE6F1FB),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              s.proPreview ? tr('pro_plan') : tr('free_plan'),
+              style: TextStyle(
+                fontSize: 12,
+                color: s.proPreview
+                    ? const Color(0xFF27500A)
+                    : const Color(0xFF0C447C),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              shape: const StadiumBorder(),
+              padding: const EdgeInsets.symmetric(horizontal: 22),
+            ),
+            onPressed: () {
+              Navigator.pop(dc);
+              nav.push(
+                  MaterialPageRoute(builder: (_) => const MyShopScreen()));
+            },
+            child: Text(tr('manage_shop')),
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          _row(
+            Icons.language,
+            tr('language'),
+            sub: isRw ? tr('language_kinyarwanda') : tr('language_english'),
+            onTap: () => _showLanguageDialog(dc),
+          ),
+          _row(
+            Icons.workspace_premium,
+            tr('subscription'),
+            trailing: s.proPreview
+                ? const Text('PRO',
+                    style: TextStyle(
+                        color: Colors.green, fontWeight: FontWeight.bold))
+                : null,
+            onTap: () {
+              Navigator.pop(dc);
+              nav.push(MaterialPageRoute(
+                  builder: (_) => const SubscriptionScreen()));
+            },
+          ),
+          _row(Icons.cloud_upload, tr('backup'),
+              onTap: () => soon(tr('backup'))),
+          _row(Icons.help_outline, tr('help_feedback'),
+              onTap: () => soon(tr('help_feedback'))),
+          _row(Icons.shield_outlined, tr('privacy'),
+              onTap: () => soon(tr('privacy'))),
+          _row(Icons.logout, tr('sign_out'),
+              onTap: () => soon(tr('sign_out'))),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 
   void _showAccountMenu(BuildContext context) {
     final nav = Navigator.of(context);
-    showModalBottomSheet(
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => ListenableBuilder(
-        listenable: AppSettings.instance,
-        builder: (_, _) {
-          final s = AppSettings.instance;
-          final isRw = s.language == 'rw';
-          return SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.language),
-                    title: Text(tr('language')),
-                    subtitle: Text(isRw
-                        ? tr('language_kinyarwanda')
-                        : tr('language_english')),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showLanguageDialog(sheetContext),
-                  ),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.receipt_long),
-                    title: Text(tr('vat_toggle')),
-                    value: s.vatEnabled,
-                    onChanged: (v) => s.setVatEnabled(v),
-                  ),
-                  const Divider(),
-                  _item(sheetContext, Icons.login, tr('sign_in')),
-                  _item(sheetContext, Icons.dark_mode, tr('dark_mode')),
-                  _item(sheetContext, Icons.play_circle, tr('try_demo')),
-                  ListTile(
-                    leading: const Icon(Icons.credit_card),
-                    title: Text(tr('subscription')),
-                    trailing: s.proPreview
-                        ? const Text('PRO',
-                            style: TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold))
-                        : null,
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      nav.push(MaterialPageRoute(
-                          builder: (_) => const SubscriptionScreen()));
-                    },
-                  ),
-                  _item(sheetContext, Icons.help_outline, tr('help')),
-                ],
+      barrierColor: Colors.black26,
+      builder: (dc) {
+        final top = MediaQuery.of(dc).padding.top + 8;
+        final maxH = MediaQuery.of(dc).size.height * 0.85;
+        return Align(
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(10, top, 10, 10),
+            child: Material(
+              color: Colors.white,
+              elevation: 6,
+              borderRadius: BorderRadius.circular(28),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 340, maxHeight: maxH),
+                child: ListenableBuilder(
+                  listenable: AppSettings.instance,
+                  builder: (_, __) => _accountCardBody(dc, nav, messenger),
+                ),
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _item(BuildContext context, IconData icon, String label) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(label),
-      onTap: () {
-        final messenger = ScaffoldMessenger.of(context);
-        Navigator.pop(context);
-        messenger.showSnackBar(
-          SnackBar(content: Text('$label - ${tr('coming_soon')}')),
+          ),
         );
       },
     );
@@ -170,7 +264,21 @@ class _MenyaAppBarState extends State<MenyaAppBar> {
           ),
         if (!_searching)
           IconButton(
-            icon: const Icon(Icons.account_circle),
+            tooltip: tr('my_shop'),
+            icon: ListenableBuilder(
+              listenable: AppSettings.instance,
+              builder: (_, __) => CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.white,
+                child: Text(
+                  _initial(),
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.accentBlue),
+                ),
+              ),
+            ),
             onPressed: () => _showAccountMenu(context),
           ),
       ],
