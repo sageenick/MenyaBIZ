@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../l10n/strings.dart';
+import '../services/report_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/pay_method_selector.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/scroll_top_wrapper.dart';
 import 'barcode_scanner_screen.dart';
@@ -16,6 +18,7 @@ class StockScreen extends StatefulWidget {
 class _StockScreenState extends State<StockScreen> {
   List<Map<String, dynamic>> _products = [];
   String _query = '';
+  String _pay = 'cash';
 
   @override
   void initState() {
@@ -53,7 +56,6 @@ class _StockScreenState extends State<StockScreen> {
     return null;
   }
 
-  // Scan, then open the form: known code = replenish, new code = new item
   Future<void> _scanAndOpen() async {
     final code = await Navigator.push<String>(
       context,
@@ -77,6 +79,9 @@ class _StockScreenState extends State<StockScreen> {
     final costController = TextEditingController();
     final priceController = TextEditingController(
         text: preset == null ? '' : _fmt(preset['sell_price'] as num));
+    final supplierC = TextEditingController();
+    final phoneC = TextEditingController();
+    String pay = _pay;
     String? barcode =
         scannedBarcode ?? (preset == null ? null : preset['barcode'] as String?);
 
@@ -96,16 +101,19 @@ class _StockScreenState extends State<StockScreen> {
           final qty = int.tryParse(qtyController.text) ?? 0;
           final buy = double.tryParse(costController.text) ?? 0;
           final sell = double.tryParse(priceController.text) ?? 0;
+          final needSupplier = pay == 'credit' && supplierC.text.trim().isEmpty;
           final canSave = nameController.text.trim().isNotEmpty &&
               qty > 0 &&
               buy > 0 &&
-              sell > 0;
+              sell > 0 &&
+              !needSupplier;
 
           return AlertDialog(
             title: Text(tr('add_or_restock')),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextField(
                     controller: nameController,
@@ -117,44 +125,38 @@ class _StockScreenState extends State<StockScreen> {
                   if (matches.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Wrap(
-                          spacing: 8,
-                          children: [
-                            for (final p in matches)
-                              ActionChip(
-                                label: Text(p['name'] as String),
-                                onPressed: () {
-                                  final n = p['name'] as String;
-                                  setDialogState(() {
-                                    nameController.value = TextEditingValue(
-                                      text: n,
-                                      selection: TextSelection.collapsed(
-                                          offset: n.length),
-                                    );
-                                    priceController.text =
-                                        _fmt(p['sell_price'] as num);
-                                  });
-                                },
-                              ),
-                          ],
-                        ),
+                      child: Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final p in matches)
+                            ActionChip(
+                              label: Text(p['name'] as String),
+                              onPressed: () {
+                                final n = p['name'] as String;
+                                setDialogState(() {
+                                  nameController.value = TextEditingValue(
+                                    text: n,
+                                    selection: TextSelection.collapsed(
+                                        offset: n.length),
+                                  );
+                                  priceController.text =
+                                      _fmt(p['sell_price'] as num);
+                                });
+                              },
+                            ),
+                        ],
                       ),
                     ),
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        existing != null
-                            ? trn('restock_hint', existing['quantity'])
-                            : (nameController.text.trim().isEmpty
-                                ? ''
-                                : tr('new_product')),
-                        style: const TextStyle(
-                            fontSize: 12, color: AppTheme.primaryGreen),
-                      ),
+                    child: Text(
+                      existing != null
+                          ? trn('restock_hint', existing['quantity'])
+                          : (nameController.text.trim().isEmpty
+                              ? ''
+                              : tr('new_product')),
+                      style: const TextStyle(
+                          fontSize: 12, color: AppTheme.primaryGreen),
                     ),
                   ),
                   Row(
@@ -219,6 +221,36 @@ class _StockScreenState extends State<StockScreen> {
                         style: const TextStyle(color: AppTheme.warningRed),
                       ),
                     ),
+                  if (qty > 0 && buy > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '${tr('purchase_total')}: ${formatMoney(qty * buy)} RWF',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  Text(tr('paid_with'),
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 4),
+                  PayMethodSelector(
+                    value: pay,
+                    onChanged: (v) => setDialogState(() => pay = v),
+                  ),
+                  if (pay == 'credit') ...[
+                    TextField(
+                      controller: supplierC,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: InputDecoration(labelText: tr('supplier')),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    TextField(
+                      controller: phoneC,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(labelText: tr('phone')),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -231,19 +263,21 @@ class _StockScreenState extends State<StockScreen> {
                 onPressed: canSave
                     ? () async {
                         final code = barcode;
+                        int productId;
                         if (existing != null) {
+                          productId = existing['id'] as int;
                           await DBHelper().restockProduct(
-                            id: existing['id'] as int,
+                            id: productId,
                             addQty: qty,
                             buyPrice: buy,
                             sellPrice: sell,
                           );
                           if (code != null && code != existing['barcode']) {
                             await DBHelper()
-                                .setProductBarcode(existing['id'] as int, code);
+                                .setProductBarcode(productId, code);
                           }
                         } else {
-                          await DBHelper().insertProduct({
+                          productId = await DBHelper().insertProduct({
                             'name': nameController.text.trim(),
                             'average_cost': buy,
                             'sell_price': sell,
@@ -251,6 +285,17 @@ class _StockScreenState extends State<StockScreen> {
                             'barcode': code,
                           });
                         }
+                        final supplier = supplierC.text.trim();
+                        final phone = phoneC.text.trim();
+                        await DBHelper().recordPurchase(
+                          productId: productId,
+                          quantity: qty,
+                          unitCost: buy,
+                          method: pay,
+                          supplier: supplier.isEmpty ? null : supplier,
+                          phone: phone.isEmpty ? null : phone,
+                        );
+                        _pay = pay;
                         if (!dialogContext.mounted) return;
                         Navigator.pop(dialogContext);
                         _loadProducts();

@@ -28,7 +28,6 @@ class Report {
 }
 
 class ReportService {
-  // start is included, end is excluded. null means "no limit".
   static Future<Report> forRange(DateTime? start, DateTime? end) async {
     final sales = await DBHelper().getSales();
     final expenses = await DBHelper().getExpenses();
@@ -53,7 +52,6 @@ class ReportService {
       }
     }
 
-    // Only real expenses count, not one-time asset purchases
     double expenseTotal = 0;
     for (final e in expenses) {
       if (e['category'] == 'expense' && inRange(e['date'] as String)) {
@@ -68,7 +66,6 @@ class ReportService {
       }
     }
 
-    // Prices include 18% VAT: VAT = price - price / 1.18
     final vatCollected = salesTotal - salesTotal / 1.18;
 
     return Report(
@@ -79,5 +76,37 @@ class ReportService {
       vatCollected: vatCollected,
       vatPaid: vatPaid,
     );
+  }
+
+  // Net profit for each of the last [days] days, oldest first
+  static Future<List<double>> dailyNet(int days) async {
+    final sales = await DBHelper().getSales();
+    final expenses = await DBHelper().getExpenses();
+    final now = DateTime.now();
+    final result = <double>[];
+    for (var i = days - 1; i >= 0; i--) {
+      final day = DateTime(now.year, now.month, now.day - i);
+      bool same(String s) {
+        final x = DateTime.parse(s);
+        return x.year == day.year && x.month == day.month && x.day == day.day;
+      }
+
+      double net = 0;
+      for (final s in sales) {
+        if (same(s['date'] as String)) {
+          final q = (s['quantity'] as num).toDouble();
+          net += ((s['sell_price'] as num).toDouble() -
+                  (s['cost'] as num).toDouble()) *
+              q;
+        }
+      }
+      for (final e in expenses) {
+        if (e['category'] == 'expense' && same(e['date'] as String)) {
+          net -= (e['amount'] as num).toDouble();
+        }
+      }
+      result.add(net);
+    }
+    return result;
   }
 }

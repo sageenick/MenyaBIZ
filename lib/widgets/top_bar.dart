@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import '../l10n/strings.dart';
+import '../screens/pro_screens.dart';
 import '../services/settings_service.dart';
 
 class MenyaAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String title;
   final PreferredSizeWidget? bottom;
-
-  /// If set, the search icon is shown and this is called while typing.
   final ValueChanged<String>? onSearchChanged;
 
   const MenyaAppBar({
@@ -72,13 +71,15 @@ class _MenyaAppBarState extends State<MenyaAppBar> {
   }
 
   void _showAccountMenu(BuildContext context) {
+    final nav = Navigator.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => ListenableBuilder(
         listenable: AppSettings.instance,
         builder: (_, _) {
-          final isRw = AppSettings.instance.language == 'rw';
+          final s = AppSettings.instance;
+          final isRw = s.language == 'rw';
           return SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -94,11 +95,31 @@ class _MenyaAppBarState extends State<MenyaAppBar> {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _showLanguageDialog(sheetContext),
                   ),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.receipt_long),
+                    title: Text(tr('vat_toggle')),
+                    value: s.vatEnabled,
+                    onChanged: (v) => s.setVatEnabled(v),
+                  ),
                   const Divider(),
                   _item(sheetContext, Icons.login, tr('sign_in')),
                   _item(sheetContext, Icons.dark_mode, tr('dark_mode')),
                   _item(sheetContext, Icons.play_circle, tr('try_demo')),
-                  _item(sheetContext, Icons.credit_card, tr('subscription')),
+                  ListTile(
+                    leading: const Icon(Icons.credit_card),
+                    title: Text(tr('subscription')),
+                    trailing: s.proPreview
+                        ? const Text('PRO',
+                            style: TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold))
+                        : null,
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      nav.push(MaterialPageRoute(
+                          builder: (_) => const SubscriptionScreen()));
+                    },
+                  ),
                   _item(sheetContext, Icons.help_outline, tr('help')),
                 ],
               ),

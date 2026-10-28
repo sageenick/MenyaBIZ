@@ -5,7 +5,7 @@ import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/stock_screen.dart';
 import 'screens/sales_screen.dart';
-import 'screens/chat_screen.dart';
+import 'screens/business_screen.dart';
 import 'screens/my_money_screen.dart';
 
 Future<void> main() async {
@@ -49,7 +49,7 @@ class _MainNavigationState extends State<MainNavigation> {
     HomeScreen(),
     StockScreen(),
     SalesScreen(),
-    ChatScreen(),
+    BusinessScreen(),
     MyMoneyScreen(),
   ];
 
@@ -69,7 +69,7 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(
               icon: const Icon(Icons.point_of_sale), label: tr('sales')),
           BottomNavigationBarItem(
-              icon: const Icon(Icons.chat_bubble), label: tr('chat')),
+              icon: const Icon(Icons.dashboard), label: tr('business')),
           BottomNavigationBarItem(
               icon: const Icon(Icons.wallet), label: tr('my_money')),
         ],

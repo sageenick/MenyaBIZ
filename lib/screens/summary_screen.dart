@@ -6,6 +6,7 @@ import '../services/report_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/top_bar.dart';
+import 'pro_screens.dart';
 
 class SummaryScreen extends StatefulWidget {
   const SummaryScreen({super.key});
@@ -70,11 +71,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
     double youOwe = 0;
     for (final d in debts) {
       if ((d['paid'] ?? 0) == 1) continue;
-      final amount = (d['amount'] as num).toDouble();
+      final balance = (d['amount'] as num).toDouble() -
+          ((d['paid_amount'] ?? 0) as num).toDouble();
       if (d['direction'] == 'owed_to_you') {
-        owedToYou += amount;
+        owedToYou += balance;
       } else {
-        youOwe += amount;
+        youOwe += balance;
       }
     }
 
@@ -102,7 +104,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
   Future<void> _copySummary() async {
     final r = _report;
     if (r == null) return;
-    final text = 'MenyaBiz - ${_label(_period)}\n'
+    var text = 'MenyaBiz - ${_label(_period)}\n'
         '${tr('sales_amount')}: ${formatMoney(r.sales)} RWF\n'
         '${tr('cost_goods')}: ${formatMoney(r.goodsCost)} RWF\n'
         '${tr('expenses')}: ${formatMoney(r.expenses)} RWF\n'
@@ -110,6 +112,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
         '${tr('owed_to_you')}: ${formatMoney(_owedToYou)} RWF\n'
         '${tr('you_owe')}: ${formatMoney(_youOwe)} RWF\n'
         '${tr('stock_value')}: ${formatMoney(_stockValue)} RWF';
+    if (AppSettings.instance.vatEnabled) {
+      text += '\n${tr('vat_collected')}: ${formatMoney(r.vatCollected)} RWF\n'
+          '${tr('vat_paid')}: ${formatMoney(r.vatPaid)} RWF\n'
+          '${tr('vat_estimate')}: ${formatMoney(r.vatDue)} RWF';
+    }
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -152,6 +159,63 @@ class _SummaryScreenState extends State<SummaryScreen> {
     );
   }
 
+  Widget _periodChip(String key) {
+    final selected = _period == key;
+    return ChoiceChip(
+      label: Text(_label(key)),
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : Colors.black87,
+        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+      ),
+      selected: selected,
+      selectedColor: AppTheme.accentBlue,
+      backgroundColor: Colors.white,
+      showCheckmark: false,
+      side: BorderSide(
+        color: selected ? AppTheme.accentBlue : Colors.grey.shade400,
+      ),
+      onSelected: (_) {
+        setState(() => _period = key);
+        _load();
+      },
+    );
+  }
+
+  Widget _reportTile(
+      IconData icon, String title, String sub, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.grey.shade700),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(sub,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+            if (!isPro) const Icon(Icons.lock, size: 18, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -159,6 +223,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
       builder: (context, _) {
         final r = _report;
         final isLoss = r != null && r.netProfit < 0;
+        final vatOn = AppSettings.instance.vatEnabled;
 
         return Scaffold(
           appBar: MenyaAppBar(title: tr('full_summary')),
@@ -169,16 +234,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   children: [
                     Wrap(
                       spacing: 8,
+                      runSpacing: 4,
                       children: [
-                        for (final key in _periods)
-                          ChoiceChip(
-                            label: Text(_label(key)),
-                            selected: _period == key,
-                            onSelected: (_) {
-                              setState(() => _period = key);
-                              _load();
-                            },
-                          ),
+                        for (final key in _periods) _periodChip(key),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -256,6 +314,79 @@ class _SummaryScreenState extends State<SummaryScreen> {
                         ],
                       ),
                     ),
+                    if (vatOn)
+                      _card(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _row(tr('vat_collected'),
+                                '${formatMoney(r.vatCollected)} RWF'),
+                            _row(tr('vat_paid'),
+                                '- ${formatMoney(r.vatPaid)} RWF'),
+                            const Divider(),
+                            _row(tr('vat_estimate'),
+                                '${formatMoney(r.vatDue)} RWF',
+                                bold: true),
+                            const SizedBox(height: 4),
+                            Text(tr('vat_note'),
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Text(tr('more_reports'),
+                              style: const TextStyle(
+                                  fontSize: 13, color: Colors.grey)),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEEEDFE),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('PRO',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF3C3489))),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _reportTile(
+                      Icons.swap_horiz,
+                      tr('cash_flow'),
+                      tr('cash_flow_sub'),
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                const SampleReportScreen(kind: 'cashflow')),
+                      ),
+                    ),
+                    _reportTile(
+                      Icons.balance,
+                      tr('balance_sheet'),
+                      tr('balance_sheet_sub'),
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                const SampleReportScreen(kind: 'balance')),
+                      ),
+                    ),
+                    _reportTile(
+                      Icons.picture_as_pdf,
+                      tr('bank_pdf'),
+                      tr('bank_pdf_sub'),
+                      () => openSubscription(context),
+                    ),
+                    const SizedBox(height: 8),
                     ElevatedButton.icon(
                       onPressed: _copySummary,
                       icon: const Icon(Icons.copy),

@@ -6,9 +6,16 @@ import '../theme/app_theme.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/scroll_top_wrapper.dart';
 import 'barcode_scanner_screen.dart';
+import 'new_sale_screen.dart';
 
-String _priceText(num v) =>
-    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+class _SaleGroup {
+  final List<Map<String, dynamic>> rows = [];
+  String date = '';
+  String? payment;
+  String? ebmNo;
+  double total = 0;
+  double profit = 0;
+}
 
 class SalesScreen extends StatefulWidget {
   const SalesScreen({super.key});
@@ -45,39 +52,80 @@ class _SalesScreenState extends State<SalesScreen> {
     return '-';
   }
 
-  List<Map<String, dynamic>> get _visibleSales {
-    final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return _sales;
-    return _sales
-        .where((s) =>
-            _productName(s['product_id'] as int).toLowerCase().contains(q))
-        .toList();
+  String _payLabel(String? p) {
+    switch (p) {
+      case 'cash':
+        return tr('pay_cash');
+      case 'momo':
+        return tr('pay_momo');
+      case 'credit':
+        return tr('pay_credit');
+      default:
+        return '';
+    }
   }
 
-  Future<void> _confirmDeleteSale(Map<String, dynamic> sale) async {
+  List<_SaleGroup> _groups() {
+    final map = <String, _SaleGroup>{};
+    for (final s in _sales) {
+      final saleId = s['sale_id'];
+      final key = saleId != null ? 's$saleId' : 'r${s['id']}';
+      final g = map.putIfAbsent(key, () {
+        final x = _SaleGroup();
+        x.date = s['date'] as String;
+        x.payment = s['payment'] as String?;
+        x.ebmNo = s['ebm_no'] as String?;
+        return x;
+      });
+      g.rows.add(s);
+      final qty = (s['quantity'] as num).toDouble();
+      final price = (s['sell_price'] as num).toDouble();
+      final cost = (s['cost'] as num).toDouble();
+      g.total += price * qty;
+      g.profit += (price - cost) * qty;
+    }
+    var list = map.values.toList();
+    final q = _query.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      list = list
+          .where((g) => g.rows.any((r) => _productName(r['product_id'] as int)
+              .toLowerCase()
+              .contains(q)))
+          .toList();
+    }
+    return list;
+  }
+
+  Future<void> _confirmDelete(_SaleGroup g) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dc) => AlertDialog(
         title: Text(tr('delete_sale_title')),
         content: Text(tr('delete_sale_body')),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(tr('cancel')),
-          ),
+              onPressed: () => Navigator.pop(dc, false),
+              child: Text(tr('cancel'))),
           ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(tr('delete')),
-          ),
+              onPressed: () => Navigator.pop(dc, true),
+              child: Text(tr('delete'))),
         ],
       ),
     );
     if (ok != true) return;
-    await DBHelper().deleteSale(sale['id'] as int);
+    await DBHelper().deleteSaleGroup(g.rows);
     _loadData();
   }
 
-  // Scan an item, then open the sale form with it already selected
+  Future<void> _openNewSale({Map<String, dynamic>? product}) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => NewSaleScreen(initialProduct: product)),
+    );
+    if (saved == true) _loadData();
+  }
+
   Future<void> _scanAndSell() async {
     final code = await Navigator.push<String>(
       context,
@@ -91,280 +139,112 @@ class _SalesScreenState extends State<SalesScreen> {
         SnackBar(content: Text(tr('scan_not_found'))),
       );
     } else {
-      _showRecordSaleSheet(preselected: found);
+      _openNewSale(product: found);
     }
   }
 
-  void _showRecordSaleSheet({Map<String, dynamic>? preselected}) {
-    Map<String, dynamic>? selected = preselected;
-    final searchController = TextEditingController();
-    final qtyController = TextEditingController();
-    final priceController = TextEditingController();
-    String? scanMessage;
-    if (preselected != null) {
-      priceController.text = _priceText(preselected['sell_price'] as num);
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final chosen = selected;
-          final query = searchController.text.trim().toLowerCase();
-          final matches = _products
-              .where((p) =>
-                  query.isEmpty ||
-                  (p['name'] as String).toLowerCase().contains(query))
-              .toList();
-
-          final qty = int.tryParse(qtyController.text) ?? 0;
-          final price = double.tryParse(priceController.text) ?? 0;
-          final available = chosen == null ? 0 : chosen['quantity'] as int;
-          final cost =
-              chosen == null ? 0.0 : (chosen['average_cost'] as num).toDouble();
-          final profitPerUnit = price - cost;
-          final overselling = chosen != null && qty > available;
-          final canSave = chosen != null && qty > 0 && price > 0;
-
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tr('record_sale'),
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
+  Widget _saleCard(_SaleGroup g) {
+    final isLoss = g.profit < 0;
+    final date = g.date.substring(0, 16).replaceFirst('T', ' ');
+    final pay = _payLabel(g.payment);
+    return InkWell(
+      onLongPress: () => _confirmDelete(g),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(date,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ),
+                if (pay.isNotEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: g.payment == 'credit'
+                          ? const Color(0xFFFAEEDA)
+                          : const Color(0xFFE6F1FB),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    const SizedBox(height: 12),
-                    if (chosen == null) ...[
-                      TextField(
-                        controller: searchController,
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          labelText: tr('search_product'),
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: IconButton(
-                            tooltip: tr('scan_barcode'),
-                            icon: const Icon(Icons.qr_code_scanner),
-                            onPressed: () async {
-                              final code = await Navigator.push<String>(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        const BarcodeScannerScreen()),
-                              );
-                              if (code == null || !context.mounted) return;
-                              final found =
-                                  await DBHelper().findProductByBarcode(code);
-                              if (!context.mounted) return;
-                              setSheetState(() {
-                                if (found == null) {
-                                  scanMessage = tr('scan_not_found');
-                                } else {
-                                  scanMessage = null;
-                                  selected = found;
-                                  priceController.text =
-                                      _priceText(found['sell_price'] as num);
-                                }
-                              });
-                            },
-                          ),
-                        ),
-                        onChanged: (_) => setSheetState(() {}),
+                    child: Text(
+                      pay,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: g.payment == 'credit'
+                            ? const Color(0xFF633806)
+                            : const Color(0xFF0C447C),
                       ),
-                      if (scanMessage != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            scanMessage!,
-                            style: const TextStyle(color: AppTheme.warningRed),
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 240),
-                        child: matches.isEmpty
-                            ? Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Text(tr('no_product_found')),
-                              )
-                            : ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: matches.length,
-                                itemBuilder: (context, index) {
-                                  final p = matches[index];
-                                  final left = p['quantity'] as int;
-                                  return ListTile(
-                                    title: Text(p['name'] as String),
-                                    subtitle: Text(
-                                        '${formatMoney(p['sell_price'] as num)} RWF'),
-                                    trailing: Text(
-                                      '$left ${tr('in_stock')}',
-                                      style: TextStyle(
-                                        color: left <= 0
-                                            ? AppTheme.warningRed
-                                            : null,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    onTap: () {
-                                      setSheetState(() {
-                                        selected = p;
-                                        priceController.text = _priceText(
-                                            p['sell_price'] as num);
-                                      });
-                                    },
-                                  );
-                                },
-                              ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            for (final r in g.rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_productName(r['product_id'] as int)}  ${r['quantity']} x ${formatMoney(r['sell_price'] as num)}',
                       ),
-                    ] else ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEAF3DE),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    chosen['name'] as String,
-                                    style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                  Text('$available ${tr('in_stock')}'),
-                                ],
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                setSheetState(() {
-                                  selected = null;
-                                  qtyController.clear();
-                                  priceController.clear();
-                                });
-                              },
-                              child: Text(tr('change_item')),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextField(
-                        controller: qtyController,
-                        autofocus: true,
-                        decoration:
-                            InputDecoration(labelText: tr('qty_sold')),
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => setSheetState(() {}),
-                      ),
-                      TextField(
-                        controller: priceController,
-                        decoration:
-                            InputDecoration(labelText: tr('sell_price_each')),
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => setSheetState(() {}),
-                      ),
-                      const SizedBox(height: 12),
-                      if (qty > 0 && price > 0)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: profitPerUnit >= 0
-                                ? const Color(0xFFEAF3DE)
-                                : const Color(0xFFFCEBEB),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                  '${tr('total')}: ${formatMoney(qty * price)} RWF'),
-                              const SizedBox(height: 4),
-                              Text(
-                                profitPerUnit >= 0
-                                    ? '${tr('profit')}: ${formatMoney(qty * profitPerUnit)} RWF'
-                                    : '${tr('loss')}: ${formatMoney(-(qty * profitPerUnit))} RWF',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: profitPerUnit >= 0
-                                      ? AppTheme.primaryGreen
-                                      : AppTheme.warningRed,
-                                ),
-                              ),
-                              Text(
-                                '${tr('per_item')}: ${formatMoney(profitPerUnit)} RWF (${tr('cost_label')} ${formatMoney(cost)})',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (overselling)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            trn('only_left_warning', available),
-                            style: const TextStyle(color: AppTheme.warningRed),
-                          ),
-                        ),
-                    ],
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(sheetContext),
-                          child: Text(tr('cancel')),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: canSave
-                              ? () async {
-                                  final c = selected;
-                                  if (c == null) return;
-                                  await DBHelper().recordSale(
-                                    productId: c['id'] as int,
-                                    quantity: qty,
-                                    sellPrice: price,
-                                    cost: cost,
-                                  );
-                                  if (!sheetContext.mounted) return;
-                                  Navigator.pop(sheetContext);
-                                  _loadData();
-                                }
-                              : null,
-                          child: Text(
-                              overselling ? tr('sell_anyway') : tr('save')),
-                        ),
-                      ],
+                    ),
+                    Text(
+                      formatMoney((r['quantity'] as num) *
+                          (r['sell_price'] as num)),
                     ),
                   ],
                 ),
               ),
+            const Divider(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    isLoss
+                        ? '${tr('loss')} ${formatMoney(-g.profit)}'
+                        : '${tr('profit')} ${formatMoney(g.profit)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isLoss
+                          ? AppTheme.warningRed
+                          : AppTheme.primaryGreen,
+                    ),
+                  ),
+                ),
+                Text('${formatMoney(g.total)} RWF',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 15)),
+              ],
             ),
-          );
-        },
+            if (g.ebmNo != null && g.ebmNo!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('${tr('ebm_label')}: ${g.ebmNo}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final sales = _visibleSales;
+    final groups = _groups();
+    final hasProducts = _products.isNotEmpty;
 
     Widget body;
     if (_products.isEmpty) {
@@ -376,19 +256,17 @@ class _SalesScreenState extends State<SalesScreen> {
       );
     } else if (_sales.isEmpty) {
       body = Center(child: Text(tr('no_sales')));
-    } else if (sales.isEmpty) {
+    } else if (groups.isEmpty) {
       body = Center(child: Text(tr('no_product_found')));
     } else {
       body = Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(
-                tr('longpress_delete_sale'),
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
+              child: Text(tr('longpress_delete_sale'),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
             ),
           ),
           Expanded(
@@ -397,52 +275,14 @@ class _SalesScreenState extends State<SalesScreen> {
               builder: (controller) => ListView.builder(
                 controller: controller,
                 padding: const EdgeInsets.only(bottom: 150),
-                itemCount: sales.length,
-                itemBuilder: (context, index) {
-                  final sale = sales[index];
-                  final qty = sale['quantity'] as int;
-                  final price = (sale['sell_price'] as num).toDouble();
-                  final cost = (sale['cost'] as num).toDouble();
-                  final total = price * qty;
-                  final profit = (price - cost) * qty;
-                  final date = sale['date']
-                      .toString()
-                      .substring(0, 16)
-                      .replaceFirst('T', ' ');
-                  return ListTile(
-                    onLongPress: () => _confirmDeleteSale(sale),
-                    title: Text(_productName(sale['product_id'] as int)),
-                    subtitle: Text('$qty x ${formatMoney(price)} RWF · $date'),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('${formatMoney(total)} RWF',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        Text(
-                          profit >= 0
-                              ? '${tr('profit')} ${formatMoney(profit)}'
-                              : '${tr('loss')} ${formatMoney(-profit)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: profit >= 0
-                                ? AppTheme.primaryGreen
-                                : AppTheme.warningRed,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                itemCount: groups.length,
+                itemBuilder: (context, index) => _saleCard(groups[index]),
               ),
             ),
           ),
         ],
       );
     }
-
-    final hasProducts = _products.isNotEmpty;
 
     return Scaffold(
       appBar: MenyaAppBar(
@@ -462,7 +302,7 @@ class _SalesScreenState extends State<SalesScreen> {
           const SizedBox(height: 12),
           FloatingActionButton(
             heroTag: 'addSale',
-            onPressed: hasProducts ? () => _showRecordSaleSheet() : null,
+            onPressed: hasProducts ? () => _openNewSale() : null,
             child: const Icon(Icons.add),
           ),
         ],
